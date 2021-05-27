@@ -1,6 +1,7 @@
 from math import exp, log, sin, cos, tan, pi
 import numpy as np
 from numpy import deg2rad, rad2deg
+from numpy import genfromtxt
 import os
 
 # Directorio de imágenes
@@ -9,12 +10,19 @@ if not os.path.exists(figures_dir):
     os.makedirs(figures_dir)
 
 # Para guardar los resultados en un csv
-results_dir = './Results/' # Ruta
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
 def save_result(name,result):
+    results_dir = './Results/' # Ruta
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
     np.savetxt(results_dir+str(name)+'.csv', result, delimiter=',', fmt='%s')
 
+# Para leer los resultados de un csv
+def read_result(name):
+    results_dir = './Results/' # Ruta
+    if not os.path.exists(results_dir):
+        print('No existe la carpeta de resultados ./Results')
+    my_data = genfromtxt(results_dir+str(name)+'.csv', delimiter=',')
+    return my_data
 
 class mision():
 
@@ -35,12 +43,12 @@ class mision():
         # Si no se modifican se usan las predeterminadas
 
         self.rho_fun = self.RHO
-        self.g_fun = self.G
+        self.g_fun   = self.G
 
         #
-        self.epsilon = 0.1
+        self.epsilon  = 0.1
         self.verbose  = 500  #Pasos con output
-        self.k_lim    = 1e5 # Máximos pasos
+        self.k_lim    = 1e5  # Máximos pasos
         self.alt_flag = 1
         self.plt_flag = 1
 
@@ -74,6 +82,9 @@ class mision():
         self.r          = self.y[:,2]
         self.altitud    = self.y[:,2] - self.RT
         self.theta      = self.y[:,3]
+        self.n          = -self.dy[:,0] / self.g0
+        self.nmax       = self.n.max()
+        print('Máxima carga alcanzada n=',self.nmax,'g')
 
         return self.u, self.gamma, self.r, self.theta
 
@@ -81,10 +92,10 @@ class mision():
     def reentrada_analitica(self,Y0=[7e3,-10,100e3,0]):
 
         if Y0[2] <= self.RT and self.alt_flag == 1: Y0[2] = Y0[2] + self.RT
-        z0 = Y0[2]-self.RT
+        z0 = ze = Y0[2]-self.RT
 
-        rho0 = self.rho_fun(0)
-        zs = -1/log(self.rho_fun(1)/rho0)
+        rho0 = self.RHO(0)
+        zs = -1/log(self.RHO(1)/rho0)
 
         g0 = self.g0
         mu = self.mu
@@ -103,19 +114,29 @@ class mision():
                 u       = self.u
                 ue      = self.u[0]
                 gamma_e = self.gamma[0]
-                z       = np.linspace(0,self.altitud[0],100)
+                z       = np.linspace(0,z0,100)
+                n       = self.n
+
+                print('Ue =',ue/1e3,'km/s')
+                print('gamma_e =',rad2deg(gamma_e),'deg')
+                print('z0 =',z0/1e3,'km')
+                print('rho0 =',rho0,'kg/m^3')
+                print('zs =',zs/1e3,'km')
             else:
                 print('** Error: Corra primero la simulación numérica')
                 exit()
 
-            self.u_numerica     = u/ue
-            self.u_balistica    = np.exp( (zs*rho0)/(2*beta_val*sin(gamma_e)) * np.exp(-z/zs) )
-            self.u_planeo       = ( 1-E_val/beta_val * rho0*RT/2 * np.exp(-z/zs) )**-0.5
-
-            self.n_numerica     = np.gradient(self.u,self.t)
-            c = ue**2*rho0/(2*beta_val*g0)
             b = zs*rho0/(2*beta_val*sin(gamma_e))
-            self.n_balistica    = c * np.exp(2*b*np.exp(-z/zs)-z0/zs)
+            c = ue**2*rho0/(2*beta_val*g0)
+
+            self.u_numerica     = u/ue
+            self.u_balistica    = np.exp( b * np.exp(-z/zs) )
+            self.u_planeo       = np.empty((0,1))
+            for zz in z:
+                self.u_planeo= np.append(self.u_planeo,(1+E_val/beta_val * self.rho_fun(zz)*RT/2)**-0.5)
+
+            self.n_numerica     = n
+            self.n_balistica    = c * np.exp(2*b*np.exp(-z/zs)-z/zs)
             self.n_planeo       = 1/E_val * (1-(self.u_planeo)**2)
 
             # U/Ue vs Z
@@ -123,8 +144,8 @@ class mision():
             plt.plot(self.u_numerica,self.altitud/1e3)
             plt.plot(self.u_balistica,z/1e3)
             plt.plot(self.u_planeo,z/1e3)
-            plt.xlabel('Altitud [km]')
-            plt.ylabel('U/Ue')
+            plt.xlabel('U/Ue')
+            plt.ylabel('Altitud [km]')
             plt.legend(['Numérica','Balística','Planeo'])
             plt.grid()
             plt.savefig(figures_dir+'u_analitica.pdf')
@@ -134,8 +155,8 @@ class mision():
             plt.plot(self.n_numerica,self.altitud/1e3)
             plt.plot(self.n_balistica,z/1e3)
             plt.plot(self.n_planeo,z/1e3)
-            plt.xlabel('Altitud [km]')
-            plt.ylabel('n')
+            plt.xlabel('n')
+            plt.ylabel('Altitud [km]')
             plt.legend(['Numérica','Balística','Planeo'])
             plt.grid()
             plt.savefig(figures_dir+'n_analitica.pdf')
@@ -157,8 +178,9 @@ class mision():
         RK4 = self.RK4
 
         # Vectores de estado, resultados
-        self.y = np.array(Y)
-        self.t = np.array(t)
+        self.y  = np.array(Y)
+        self.dy = np.array([0, 0, 0, 0])
+        self.t  = np.array(t)
 
         k = 1
         last_print = 0
@@ -191,15 +213,24 @@ class mision():
             Dt_old = Dt
 
             if Dt <= Dt_new: # El paso de tiempo ha sido correcto y se usa la iteración
-                Y = Y1
-                t = t+Dt
-                k = k+1
-                self.y = np.vstack([self.y,Y])
-                self.t = np.append(self.t,t)
+                Y   = Y1
+                dY  = F(Y)
+                t   = t+Dt
+                k   = k+1
+                self.y  = np.vstack([self.y,Y])
+                self.dy = np.vstack([self.dy,dY])
+                self.t  = np.append(self.t,t)
 
                 Dt = Dt+0.01  # Para la siguiente vez se aumenta el paso
-            else:             # El paso de tiempo era insuficiente y se repite la iteración
+            elif Dt > Dt_new:             # El paso de tiempo era insuficiente y se repite la iteración
                 Dt = Dt_new
+            else:                         # Algún problema ha sucedido a la hora de calcular Dt_new
+                Dt = 0.1
+
+            # Criterio de parada Dt extremadamente pequeño
+            if Dt < 1e-28:
+                print('Imposible dar el siguiente paso')
+                break
 
             # Criterio de parada rebote
             if Y[2] > Y0[2] + 100e3:
@@ -276,71 +307,3 @@ class mision():
         except:
             rho = 1000 #kg/m^3
         return rho
-
-#####################################
-############## EJEMPLO ##############
-#####################################
-
-# Ejemplo básico
-
-# viking1 = mision()
-# viking1.reentrada(100,[1e3,deg2rad(-10),500e3,0])
-
-#
-#
-# import matplotlib.pyplot as plt
-
-#
-# fig = plt.figure()
-# plt.plot(viking1.t,viking1.altitud/1e3)
-# plt.xlabel('Tiempo [s]')
-# plt.ylabel('Altitud [km]')
-# plt.grid()
-# plt.savefig(figures_dir+'Altitud.pdf')
-# plt.close()
-
-# Modificación de coeficientes
-
-#
-# viking2 = mision(beta = lambda gamma:64-0.1*gamma, E = lambda gamma: 0.01+2*pi*gamma)
-# viking2.reentrada(5,[5e3,deg2rad(0),500e3,0])
-
-#
-# import matplotlib.pyplot as plt
-
-#
-# fig = plt.figure()
-# plt.plot(viking2.t,viking2.altitud/1e3)
-# plt.xlabel('Tiempo [s]')
-# plt.ylabel('Altitud [km]')
-# plt.grid()
-# plt.savefig(figures_dir+'Altitud2.pdf')
-# plt.close()
-
-# Modificación de funciones de densidad y gravedad
-
-#
-# def g(z):
-    # return 9.81
-
-#
-# from isa import isa_rho as rho
-
-#
-# viking3 = mision(beta = lambda gamma:64-0.1*gamma, E = lambda gamma: 0.01+2*pi*gamma)
-# viking3.rho_fun = rho
-# viking3.g_fun = g
-
-#
-# viking3.reentrada(5,[5e3,deg2rad(0),500e3,0])
-
-#
-# import matplotlib.pyplot as plt
-
-#
-# fig = plt.figure()
-# plt.plot(viking2.t,viking2.altitud/1e3)
-# plt.xlabel('Tiempo [s]')
-# plt.ylabel('Altitud [km]')
-# plt.grid()
-# plt.savefig(figures_dir+'Altitud3.pdf')

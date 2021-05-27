@@ -70,13 +70,16 @@ def isa_altitude(h, F10 = 330, Ap = 0):
 		T = 900 + 2.5 * (F10 - 70) + 1.5*Ap
 		mu = 27 - 0.012 * (h - 200)
 		H = T / mu
-		rho = 6*10e-10*exp( - (h - 175) / H )
+		try:
+			rho = 6*10e-10*exp( - (h - 175) / H )
+		except:
+			rho = 0
 
 		#Esto no esta bien
 		P= rho*R*T
 
 	else:
-		print('Atmósfera no apreciable')
+		#print('Atmósfera no apreciable')
 
 		rho=0
 		P=0

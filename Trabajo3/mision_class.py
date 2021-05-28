@@ -91,9 +91,6 @@ class mision():
     # Soluciones analíticas para comparar, crea las figuras directamente
     def reentrada_analitica(self,Y0=[7e3,-10,100e3,0]):
 
-        if Y0[2] <= self.RT and self.alt_flag == 1: Y0[2] = Y0[2] + self.RT
-        z0 = ze = Y0[2]-self.RT
-
         rho0 = self.RHO(0)
         zs = -1/log(self.RHO(1)/rho0)
 
@@ -111,9 +108,12 @@ class mision():
         if self.plt_flag == 1:
             import matplotlib.pyplot as plt
             if hasattr(self, 'u'):
+                altitud = self.altitud.tolist()
                 u       = self.u
-                ue      = self.u[0]
-                gamma_e = self.gamma[0]
+                index   = altitud.index(min([value for index,value in enumerate(self.altitud) if value > 100e3]))
+                z0      = self.altitud[index]
+                ue      = self.u[index]
+                gamma_e = self.gamma[index]
                 z       = np.linspace(0,z0,100)
                 n       = self.n
 
@@ -146,6 +146,7 @@ class mision():
             plt.plot(self.u_planeo,z/1e3)
             plt.xlabel('U/Ue')
             plt.ylabel('Altitud [km]')
+            plt.ylim([0, 100])
             plt.legend(['Numérica','Balística','Planeo'])
             plt.grid()
             plt.savefig(figures_dir+'u_analitica.pdf')
@@ -157,6 +158,7 @@ class mision():
             plt.plot(self.n_planeo,z/1e3)
             plt.xlabel('n')
             plt.ylabel('Altitud [km]')
+            plt.ylim([0, 100])
             plt.legend(['Numérica','Balística','Planeo'])
             plt.grid()
             plt.savefig(figures_dir+'n_analitica.pdf')
